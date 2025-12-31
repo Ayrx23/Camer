@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gesture Particles</title>
+<style>
+body { margin:0; background:black; overflow:hidden }
+#video {
+  position:fixed; bottom:10px; left:10px;
+  width:160px; height:120px;
+  border:2px solid cyan; border-radius:8px;
+  opacity:.85; z-index:10;
+}
+#loading {
+  position:fixed; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  font-family:monospace; color:#0ff;
+}
+</style>
+</head>
+<body>
+
+<div id="loading">Initializing Vision & GPU…</div>
+<video id="video" autoplay muted playsinline></video>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+/* ---------- THREE ---------- */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+camera.position.z = 120;
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+/* ---------- PARTICLES ---------- */
+const COUNT = 14000;
+let positions = new Float32Array(COUNT * 3);
+let colors = new Float32Array(COUNT * 3);
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const material = new THREE.PointsMaterial({
+  size:1.2,
+  vertexColors:true,
+  blending:THREE.AdditiveBlending,
+  depthWrite:false,
+  transparent:true
+});
+
+const particles = new THREE.Points(geometry, material);
+scene.add(particles);
+
+/* ---------- SHAPES ---------- */
+let mode = 0;
+const modes = ['cloud','heart','saturn','firework'];
+
+function setShape(type){
+  for(let i=0;i<COUNT;i++){
+    const i3=i*3;
+    let x=0,y=0,z=0;
+
+    if(type==='cloud'){
+      const r=Math.random()*50;
+      const a=Math.random()*Math.PI*2;
+      x=Math.cos(a)*r;
+      y=Math.sin(a)*r;
+      z=(Math.random()-.5)*30;
+    }
+
+    if(type==='heart'){
+      const t=Math.random()*Math.PI*2;
+      x=16*Math.pow(Math.sin(t),3);
+      y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
+      z=(Math.random()-.5)*10;
+      x*=2; y*=2;
+    }
+
+    if(type==='saturn'){
+      const a=Math.random()*Math.PI*2;
+      const r=40+Math.random()*8;
+      x=Math.cos(a)*r;
+      y=(Math.random()-.5)*4;
+      z=Math.sin(a)*r;
+    }
+
+    if(type==='firework'){
+      const a=Math.random()*Math.PI*2;
+      const p=Math.random()*Math.PI;
+      const r=Math.random()*50;
+      x=Math.sin(p)*Math.cos(a)*r;
+      y=Math.cos(p)*r;
+      z=Math.sin(p)*Math.sin(a)*r;
+    }
+
+    positions[i3]=x;
+    positions[i3+1]=y;
+    positions[i3+2]=z;
+
+    colors[i3]=Math.random();
+    colors[i3+1]=Math.random();
+    colors[i3+2]=1;
+  }
+  geometry.attributes.position.needsUpdate=true;
+  geometry.attributes.color.needsUpdate=true;
+}
+
+setShape('cloud');
+
+/* ---------- HAND TRACKING ---------- */
+const video=document.getElementById('video');
+let pinch=0,lastSwitch=0,lastX=0,speed=0;
+
+const hands=new Hands({
+  locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+
+hands.setOptions({
+  maxNumHands:1,
+  minDetectionConfidence:.7,
+  minTrackingConfidence:.7
+});
+
+hands.onResults(res=>{
+  if(!res.multiHandLandmarks) return;
+  const lm=res.multiHandLandmarks[0];
+  const t=lm[4], i=lm[8];
+
+  pinch=Math.hypot(t.x-i.x,t.y-i.y);
+
+  speed=Math.abs(lm[9].x-lastX);
+  lastX=lm[9].x;
+
+  if(pinch<0.04 && performance.now()-lastSwitch>1000){
+    mode=(mode+1)%modes.length;
+    setShape(modes[mode]);
+    lastSwitch=performance.now();
+  }
+});
+
+new Camera(video,{
+  onFrame:async()=>hands.send({image:video}),
+  width:640,height:480
+}).start().then(()=>loading.remove());
+
+/* ---------- LOOP ---------- */
+function animate(){
+  requestAnimationFrame(animate);
+
+  const scale=THREE.MathUtils.clamp(1/(pinch*6),.6,3);
+  particles.scale.setScalar(scale);
+
+  if(speed>0.03){
+    particles.scale.multiplyScalar(1.02);
+  }
+
+  particles.rotation.y+=0.002;
+  particles.rotation.x+=0.001;
+
+  renderer.render(scene,camera);
+}
+animate();
+
+/* ---------- RESIZE ---------- */
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
