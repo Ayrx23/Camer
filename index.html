@@ -1,29 +1,3 @@
-tion animate(){
-  requestAnimationFrame(animate);
-
-  const scale=THREE.MathUtils.clamp(1/(pinch*6),.6,3);
-  particles.scale.setScalar(scale);
-
-  if(speed>0.03){
-    particles.scale.multiplyScalar(1.02);
-  }
-
-  particles.rotation.y+=0.002;
-  particles.rotation.x+=0.001;
-
-  renderer.render(scene,camera);
-}
-animate();
-
-/* ---------- RESIZE ---------- */
-addEventListener('resize',()=>{
-  camera.aspect=innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
-});
-</script>
-</body>
-</html>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -312,3 +286,4 @@ window.addEventListener('resize', () => {
 </script>
 </body>
 </html>
+
