@@ -2,17 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Gesture Particles Stable</title>
+<title>Gesture Alchemy: Solar Edition</title>
 <style>
-body{margin:0;background:black;overflow:hidden}
-#video{position:fixed;bottom:10px;left:10px;width:160px;height:120px;
-border:2px solid cyan;border-radius:8px;transform:scaleX(-1);opacity:.85}
-#label{position:fixed;top:10px;right:20px;color:#0ff;font-family:monospace}
+  body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  #video { position: fixed; bottom: 20px; left: 20px; width: 180px; height: 135px; border: 2px solid #0ff; border-radius: 12px; transform: scaleX(-1); z-index: 10; opacity: 0.7; }
+  #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; color: #0ff; z-index: 100; }
+  #ui { position: fixed; top: 20px; right: 20px; color: #0ff; text-align: right; pointer-events: none; text-transform: uppercase; letter-spacing: 2px; }
+  .loader { border: 4px solid #111; border-top: 4px solid #0ff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<div id="label">Loading…</div>
+<div id="loading"><div class="loader"></div>Initializing System...</div>
+<div id="ui"><div id="mode-text">SHAPE MODE</div><div id="gesture-hint">CLAP TO EXPLORE SPACE</div></div>
 <video id="video" autoplay muted playsinline></video>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.158/build/three.min.js"></script>
@@ -20,174 +23,166 @@ border:2px solid cyan;border-radius:8px;transform:scaleX(-1);opacity:.85}
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-/* ---------- THREE ---------- */
-const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,1000);
-camera.position.z=120;
+/* ---------- CONFIG & STATE ---------- */
+const COUNT = 25000;
+let isSolarSystem = false;
+let currentMode = 0;
+const modes = ['nebula', 'heart', 'torus', 'dna'];
+let targetScale = 1;
+let currentScale = 1;
+let lastSwitch = 0;
+let lastClap = 0;
 
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+/* ---------- THREE SETUP ---------- */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 2000);
+camera.position.z = 150;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-/* ---------- PARTICLES ---------- */
-const COUNT=12000;
-const pos=new Float32Array(COUNT*3);
-const col=new Float32Array(COUNT*3);
+/* ---------- PARTICLE SYSTEM ---------- */
+const geometry = new THREE.BufferGeometry();
+const posArr = new Float32Array(COUNT * 3);
+const colArr = new Float32Array(COUNT * 3);
+const sizeArr = new Float32Array(COUNT);
 
-const geo=new THREE.BufferGeometry();
-geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+geometry.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+geometry.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
 
-const mat=new THREE.PointsMaterial({
-  size:1,
-  vertexColors:true,
-  blending:THREE.AdditiveBlending,
-  transparent:true,
-  depthWrite:false
+const material = new THREE.PointsMaterial({
+  size: 0.7,
+  vertexColors: true,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
 });
 
-const pts=new THREE.Points(geo,mat);
-scene.add(pts);
+const points = new THREE.Points(geometry, material);
+scene.add(points);
 
-/* ---------- SHAPES ---------- */
-const shapes=['cloud','heart','ring','spiral'];
-let shapeIndex=0;
-let solar=false;
+/* ---------- SHAPE GENERATORS ---------- */
+function updateParticles(type) {
+  const positions = geometry.attributes.position.array;
+  const colors = geometry.attributes.color.array;
 
-function setShape(type){
-  for(let i=0;i<COUNT;i++){
-    const i3=i*3;
-    let x=0,y=0,z=0,r=1,g=1,b=1;
+  for(let i=0; i<COUNT; i++) {
+    const i3 = i * 3;
+    let x, y, z, r, g, b;
 
-    if(type==='cloud'){
-      const a=Math.random()*Math.PI*2;
-      const d=Math.random()*50;
-      x=Math.cos(a)*d; y=Math.sin(a)*d; z=(Math.random()-.5)*30;
-      r=0.2; g=0.8; b=1;
+    if (isSolarSystem) {
+        // Solar System Logic (Simplified orbits)
+        const planetIdx = i % 9; 
+        const orbitRad = (planetIdx + 1) * 25;
+        const angle = (i / COUNT) * Math.PI * 2 + (Math.random() * 0.5);
+        x = Math.cos(angle) * orbitRad;
+        z = Math.sin(angle) * orbitRad;
+        y = (Math.random() - 0.5) * 2;
+        r = 0.5 + Math.random() * 0.5; g = 0.7; b = 1.0;
+        if(planetIdx === 0) { x=y=z=0; r=1; g=0.6; b=0; } // The Sun
+    } else {
+        if(type === 'nebula') {
+            const rad = Math.random() * 60;
+            const a = Math.random() * Math.PI * 2;
+            x = Math.cos(a) * rad; y = Math.sin(a) * rad; z = (Math.random()-0.5) * 40;
+            r = 0.2; g = 0.4; b = 1;
+        } else if(type === 'heart') {
+            const t = Math.random() * Math.PI * 2;
+            x = 16 * Math.pow(Math.sin(t), 3);
+            y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+            z = (Math.random() - 0.5) * 15;
+            x *= 2.5; y *= 2.5; r = 1; g = 0.2; b = 0.4;
+        } else if(type === 'torus') {
+            const a = Math.random() * Math.PI * 2;
+            const b_ = Math.random() * Math.PI * 2;
+            const R = 50, rr = 15;
+            x = (R + rr * Math.cos(b_)) * Math.cos(a);
+            y = (R + rr * Math.cos(b_)) * Math.sin(a);
+            z = rr * Math.sin(b_);
+            r = 0.8; g = 0.2; b = 1;
+        } else if(type === 'dna') {
+            const t = (i / COUNT) * 40;
+            const side = i % 2 === 0 ? 1 : -1;
+            x = Math.cos(t) * 20 * side;
+            z = Math.sin(t) * 20 * side;
+            y = t * 4 - 80;
+            r = side > 0 ? 0 : 1; g = 1; b = side > 0 ? 1 : 0;
+        }
     }
 
-    if(type==='heart'){
-      const t=Math.random()*Math.PI*2;
-      x=16*Math.pow(Math.sin(t),3);
-      y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
-      z=(Math.random()-.5)*10;
-      x*=2; y*=2;
-      r=1; g=0.2; b=0.4;
-    }
-
-    if(type==='ring'){
-      const a=Math.random()*Math.PI*2;
-      const r2=40+Math.random()*10;
-      x=Math.cos(a)*r2; z=Math.sin(a)*r2; y=(Math.random()-.5)*4;
-      r=1; g=0.8; b=0.2;
-    }
-
-    if(type==='spiral'){
-      const t=i*0.02;
-      x=Math.cos(t)*t;
-      z=Math.sin(t)*t;
-      y=(i/COUNT-.5)*80;
-      r=Math.sin(t)*.5+.5;
-      g=Math.cos(t)*.5+.5;
-      b=1;
-    }
-
-    pos[i3]=x; pos[i3+1]=y; pos[i3+2]=z;
-    col[i3]=r; col[i3+1]=g; col[i3+2]=b;
+    positions[i3] = x; positions[i3+1] = y; positions[i3+2] = z;
+    colors[i3] = r; colors[i3+1] = g; colors[i3+2] = b;
   }
-  geo.attributes.position.needsUpdate=true;
-  geo.attributes.color.needsUpdate=true;
-  label.textContent='Mode: '+type;
+  geometry.attributes.position.needsUpdate = true;
+  geometry.attributes.color.needsUpdate = true;
 }
 
-function setSolar(){
-  for(let i=0;i<COUNT;i++){
-    const a=Math.random()*Math.PI*2;
-    const r2=(i%6)*15;
-    pos[i*3]=Math.cos(a)*r2;
-    pos[i*3+1]=(Math.random()-.5)*2;
-    pos[i*3+2]=Math.sin(a)*r2;
-    col[i*3]=1; col[i*3+1]=1; col[i*3+2]=0;
-  }
-  geo.attributes.position.needsUpdate=true;
-  geo.attributes.color.needsUpdate=true;
-  label.textContent='Mode: Solar System';
-}
+updateParticles(modes[0]);
 
-setShape('cloud');
+/* ---------- GESTURE ENGINE ---------- */
+const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6 });
 
-/* ---------- HAND TRACKING ---------- */
-const video=document.getElementById('video');
-const label=document.getElementById('label');
+hands.onResults(res => {
+  if (!res.multiHandLandmarks || res.multiHandLandmarks.length === 0) return;
 
-let pinch=0.3;
-let lastSwitch=0;
-let lastClap=0;
+  const h1 = res.multiHandLandmarks[0];
+  const h2 = res.multiHandLandmarks[1];
 
-const hands=new Hands({
-  locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-});
-
-hands.setOptions({
-  maxNumHands:2,
-  minDetectionConfidence:.6,
-  minTrackingConfidence:.6
-});
-
-hands.onResults(res=>{
-  if(!res.multiHandLandmarks) return;
-
-  // ONE HAND → pinch scale + shape switch
-  if(res.multiHandLandmarks.length===1){
-    const lm=res.multiHandLandmarks[0];
-    pinch=Math.hypot(lm[4].x-lm[8].x,lm[4].y-lm[8].y);
-
-    if(pinch<0.05 && performance.now()-lastSwitch>1200){
-      shapeIndex=(shapeIndex+1)%shapes.length;
-      setShape(shapes[shapeIndex]);
-      lastSwitch=performance.now();
+  // 1. PINCH TO CHANGE SHAPE (Right hand index/thumb)
+  const pinch = Math.hypot(h1[4].x - h1[8].x, h1[4].y - h1[8].y);
+  if (pinch < 0.04 && performance.now() - lastSwitch > 800) {
+    if(!isSolarSystem) {
+        currentMode = (currentMode + 1) % modes.length;
+        updateParticles(modes[currentMode]);
+        document.getElementById('mode-text').innerText = modes[currentMode];
     }
+    lastSwitch = performance.now();
   }
 
-  // TWO HANDS → clap toggle
-  if(res.multiHandLandmarks.length===2){
-    const a=res.multiHandLandmarks[0][9];
-    const b=res.multiHandLandmarks[1][9];
-    const d=Math.hypot(a.x-b.x,a.y-b.y);
+  // 2. TWO HAND SCALE & CLAP
+  if (h2) {
+    const handDist = Math.hypot(h1[9].x - h2[9].x, h1[9].y - h2[9].y);
+    
+    // Scale mapping
+    targetScale = THREE.MathUtils.mapLinear(handDist, 0.1, 0.7, 0.5, 3.5);
 
-    if(d<0.07 && performance.now()-lastClap>1500){
-      solar=!solar;
-      solar?setSolar():setShape(shapes[shapeIndex]);
-      lastClap=performance.now();
+    // CLAP DETECT (Sudden closeness)
+    if (handDist < 0.08 && performance.now() - lastClap > 1500) {
+        isSolarSystem = !isSolarSystem;
+        updateParticles(isSolarSystem ? 'solar' : modes[currentMode]);
+        document.getElementById('mode-text').innerText = isSolarSystem ? "SOLAR SYSTEM" : modes[currentMode];
+        lastClap = performance.now();
     }
   }
 });
 
-new Camera(video,{
-  onFrame:async()=>hands.send({image:video}),
-  width:640,height:480
-}).start();
+const video = document.getElementById('video');
+const cam = new Camera(video, { onFrame: async () => await hands.send({image: video}), width: 640, height: 480 });
+cam.start().then(() => document.getElementById('loading').remove());
 
-/* ---------- LOOP ---------- */
-function animate(){
+/* ---------- SMOOTH ANIMATION LOOP ---------- */
+function animate() {
   requestAnimationFrame(animate);
 
-  const safe=Math.max(pinch,0.08);
-  const s=THREE.MathUtils.lerp(pts.scale.x,1/safe,0.1);
-  pts.scale.setScalar(THREE.MathUtils.clamp(s,0.6,3));
+  // Oily Smooth Scaling (LERP)
+  currentScale += (targetScale - currentScale) * 0.1;
+  points.scale.setScalar(currentScale);
 
-  pts.rotation.y+=0.002;
-  pts.rotation.x+=0.001;
+  // Rotation
+  points.rotation.y += isSolarSystem ? 0.005 : 0.002;
+  points.rotation.x += 0.001;
 
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
 }
 animate();
 
-addEventListener('resize',()=>{
-  camera.aspect=innerWidth/innerHeight;
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
 });
 </script>
 </body>
